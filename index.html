@@ -2,11 +2,147 @@
 <html lang="en">
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To Do App</title>
+    <!-- Fluid viewport -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
+        main {
+            margin: 10px;
+        }
+
+        main fieldset {
+            margin-bottom: 0 !important;
+        }
+
+        .strike {
+            text-decoration: line-through;
+        }
+
+        a {
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .todo {
+            align-items: end;
+            display: flex;
+            gap: 10px;
+        }
+
+        .todo input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+        }
+
+        .todo .title {
+            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .todo .due {
+            flex-shrink: 0;
+            font-size: .75em;
+        }
+
+    </style>
+    <script src="https://unpkg.com/alpinejs@latest" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.30.1/moment.min.js"></script>
 </head>
 
 <body>
+    <main x-data="app()">
+        <h1>To Do App</h1>
+        <hr>
+        <form @submit.prevent="createTodo" @keydown.enter="createTodo">
+            <fieldset role="group">
+                <input type="text" x-model="title" placeholder="New To Do..." required>
+            </fieldset>
+            <fieldset role="group">
+                <input type="datetime-local" name="date" x-model="due" required>
+                <button type="submit">&plus;</button>
+            </fieldset>
+        </form>
+        <hr>
+        <template x-for="todo in todos" :key="todo.id">
+            <template x-if="!todo.done">
+                <div class="todo">
+                    <input type="checkbox" x-model="todo.done" @input="todo.done=$event.target.checked;updateTodo(todo)">
+                    <span x-text="todo.title" class="title" @input="todo.title=$event.target.innerText;updateTodo(todo)" contenteditable></span>
+                    <span x-text="moment(todo.due).fromNow()" class="due"></span>
+                    <a @click.prevent="deleteTodo(todo.id)">&times;</a>
+                </div>
+            </template>
+        </template>
+        <hr>
+        <template x-for="todo in todos" :key="todo.id">
+            <template x-if="todo.done">
+                <div class="todo">
+                    <input type="checkbox" x-model="todo.done" @input="updateTodo(todo)">
+                    <span x-text="todo.title" class="title strike"></span>
+                    <span x-text="moment(todo.due).fromNow()" class="due"></span>
+                    <a @click.prevent="deleteTodo(todo.id)">&times;</a>
+                </div>
+            </template>
+        </template>
+    </main>
 
+    <script>
+        function app() {
+            return {
+                todos: [],
+                title: '',
+                due: '',
+                async listTodo() {
+                    const response = await fetch('/todos');
+                    const todos = await response.json();
+                    this.todos = todos.sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime());
+                    console.log("LIST", response.status, response.statusText);
+                },
+                async createTodo() {
+                    const response = await fetch('/todos', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: this.title,
+                            due: new Date(this.due),
+                            done: false,
+                        })
+                    });
+                    console.log("CREATE", response.status, response.statusText);
+                    const todo = await response.json();
+                    this.title = '';
+                    this.due = '';
+                    this.listTodo();
+                },
+                async updateTodo(todo) {
+                    const res = await fetch(`/todos/${todo.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(todo)
+                    });
+                    console.log("UPDATE", res.status, res.statusText);
+                },
+                async deleteTodo(id) {
+                    const res = await fetch(`/todos/${id}`, { method: 'DELETE' });
+                    console.log("DELETE", res.status, res.statusText);
+                    this.listTodo();
+                },
+                init() {
+                    this.listTodo();
+                }
+            }
+        }
+    </script>
 </body>
 
 </html>
