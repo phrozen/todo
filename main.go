@@ -115,7 +115,7 @@ func main() {
 
 	// Set up the root route to serve the embedded index.html
 	app.srv.Get("/", func(c *fiber.Ctx) error {
-		// Serve the embedded index.html file in development mode
+		// Serve the index.html from disk in development mode (for hot reloading)
 		if *devm {
 			return c.SendFile("index.html")
 		}
