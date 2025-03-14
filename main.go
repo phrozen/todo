@@ -4,8 +4,12 @@ import (
 	_ "embed"
 	"flag"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -14,9 +18,13 @@ import (
 var index []byte
 
 type Todo struct {
-	gorm.Model
-	Title string `json:"title"`
-	Done  bool   `json:"done"`
+	ID        uint           `json:"id" gorm:"unique;primaryKey;autoIncrement"`
+	Title     string         `json:"title"`
+	Done      bool           `json:"done"`
+	Due       time.Time      `json:"due"`
+	CreatedAt time.Time      `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt time.Time      `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index"`
 }
 
 type App struct {
@@ -36,23 +44,12 @@ func NewApp(path string) (*App, error) {
 	if err := db.AutoMigrate(&Todo{}); err != nil {
 		return nil, err
 	}
-	// Create a new App instance
-	app := &App{db: db}
 	// Set up the Fiber server
 	srv := fiber.New()
-	// Set up the root route to serve the embedded index.html
-	srv.Get("/", func(c *fiber.Ctx) error {
-		return c.Type("html").Send(index)
-	})
-	// Set up RESTful routes for Todo resources CRUD operations
-	srv.Get("/todos", app.List)
-	srv.Post("/todos", app.Create)
-	srv.Get("/todos/:id", app.Read)
-	srv.Put("/todos/:id", app.Update)
-	srv.Delete("/todos/:id", app.Delete)
-	// Return the App instance
-	app.srv = srv
-	return app, nil
+	srv.Use(recover.New())
+	srv.Use(requestid.New())
+	srv.Use(logger.New())
+	return &App{db: db, srv: srv}, nil
 }
 
 func (app *App) List(c *fiber.Ctx) error {
@@ -107,6 +104,7 @@ func main() {
 	// Parse command-line flags
 	path := flag.String("db", "todo.db", "database file")
 	addr := flag.String("addr", ":3000", "server address")
+	devm := flag.Bool("dev", false, "development mode")
 	flag.Parse()
 
 	// Use the NewApp function to initialize the application
@@ -114,6 +112,23 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create new app: %v", err)
 	}
+
+	// Set up the root route to serve the embedded index.html
+	app.srv.Get("/", func(c *fiber.Ctx) error {
+		// Serve the embedded index.html file in development mode
+		if *devm {
+			return c.SendFile("index.html")
+		}
+		// Serve the embedded index.html file in production mode
+		return c.Type("html").Send(index)
+	})
+
+	// Set up RESTful routes for Todo resources CRUD operations
+	app.srv.Get("/todos", app.List)
+	app.srv.Post("/todos", app.Create)
+	app.srv.Get("/todos/:id", app.Read)
+	app.srv.Put("/todos/:id", app.Update)
+	app.srv.Delete("/todos/:id", app.Delete)
 
 	// Start the Fiber server
 	if err := app.srv.Listen(*addr); err != nil {
